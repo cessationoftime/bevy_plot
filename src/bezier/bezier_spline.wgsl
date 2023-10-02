@@ -1,8 +1,8 @@
-#import bevy_sprite::mesh2d_view_bind_group
+#import bevy_sprite::mesh2d_view_bindings
 [[group(0), binding(0)]]
 var<uniform> view: View;
 
-#import bevy_sprite::mesh2d_struct
+#import bevy_sprite::mesh2d_types
 [[group(1), binding(0)]]
 var<uniform> mesh: Mesh2d;
 

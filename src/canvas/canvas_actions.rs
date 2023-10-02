@@ -2,6 +2,7 @@ use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+    window::PrimaryWindow,
 };
 
 use crate::canvas::*;
@@ -20,8 +21,7 @@ fn spawn_axis_tick_labels(
     text: &str,
     font_size: f32,
     position: Vec3,
-    v_align: VerticalAlign,
-    h_align: HorizontalAlign,
+    text_alignment: TextAlignment,
     font_color: Color,
     font: &Handle<Font>,
 ) {
@@ -31,14 +31,10 @@ fn spawn_axis_tick_labels(
         font_size,
         color: font_color,
     };
-    let text_alignment = TextAlignment {
-        vertical: v_align,
-        horizontal: h_align,
-    };
 
     let label_entity = commands
-        .spawn_bundle(Text2dBundle {
-            text: Text::with_section(text, text_style.clone(), text_alignment),
+        .spawn(Text2dBundle {
+            text: Text::from_section(text, text_style.clone()).with_alignment(text_alignment),
             transform: Transform::from_translation(position),
             ..Default::default()
         })
@@ -71,11 +67,11 @@ pub(crate) fn update_target(
         let plot_handle = event.plot_handle.clone();
         let plot_entity = event.canvas_entity;
         // if let Some(plot) = materials.get_mut(plot_handle.clone()) {
-        if let Some(plot) = plots.get_mut(plot_handle.clone()) {
+        if let Some(plot) = plots.get_mut(&plot_handle) {
             //
             // update canvas shader
             if let Some(canvas_mat) = canvas_materials.get_mut(&event.canvas_material_handle) {
-                canvas_mat.update_all(&plot);
+                canvas_mat.update_all(plot);
             }
 
             if plot.show_target && plot.target_toggle {
@@ -85,9 +81,9 @@ pub(crate) fn update_target(
                 let pos = plot.target_position;
 
                 let target_str_x =
-                    format_numeric_label(&plot, pos.x, pos.x > 1000.0 || pos.x < 0.01);
+                    format_numeric_label(plot, pos.x, pos.x > 1000.0 || pos.x < 0.01);
                 let target_str_y =
-                    format_numeric_label(&plot, pos.y, pos.y > 1000.0 || pos.y < 0.01);
+                    format_numeric_label(plot, pos.y, pos.y > 1000.0 || pos.y < 0.01);
 
                 let target_str = format!("({}, {})", target_str_x, target_str_y);
 
@@ -99,16 +95,13 @@ pub(crate) fn update_target(
 
                 // let font = asset_server.load("fonts/Roboto-Regular.ttf");
 
-                let mut text_alignment = TextAlignment {
-                    vertical: VerticalAlign::Bottom,
-                    horizontal: HorizontalAlign::Left,
-                };
+                let mut text_alignment = TextAlignment::Left;
 
                 let upper_limits = plot.canvas_position + plot.canvas_size / 2.0;
                 let lower_limits = plot.canvas_position - plot.canvas_size / 2.0;
 
                 if target_position.x > upper_limits.x - font_size * 1.0 {
-                    text_alignment.horizontal = HorizontalAlign::Right;
+                    text_alignment = TextAlignment::Right;
                     target_position.x -= font_size * 0.4;
                 }
 
@@ -122,12 +115,9 @@ pub(crate) fn update_target(
                         || target_position.y < lower_limits.y + font_size * 0.2)
                     {
                         let label_entity = commands
-                            .spawn_bundle(Text2dBundle {
-                                text: Text::with_section(
-                                    target_str,
-                                    text_style.clone(),
-                                    text_alignment,
-                                ),
+                            .spawn(Text2dBundle {
+                                text: Text::from_section(target_str, text_style.clone())
+                                    .with_alignment(text_alignment),
                                 transform: Transform::from_translation(target_position),
                                 ..Default::default()
                             })
@@ -159,7 +149,7 @@ pub(crate) fn update_plot_labels(
 
             // if let Some(plot) = materials.get_mut(plot_handle.clone()) {
 
-            if let Some(plot) = plots.get_mut(plot_handle.clone()) {
+            if let Some(plot) = plots.get_mut(&plot_handle) {
                 if !plot.hide_tick_labels {
                     for entity in plot_label_query.iter() {
                         commands.entity(entity).despawn();
@@ -230,9 +220,9 @@ pub(crate) fn update_plot_labels(
                             // }
 
                             let x_str = format_numeric_label(
-                                &plot,
+                                plot,
                                 i as f32 * plot.tick_period.x,
-                                max_abs_x >= 1000.0 || max_abs_x < 0.01,
+                                !(0.01..1000.0).contains(&max_abs_x),
                             );
 
                             // leftmost position on the x axis
@@ -255,10 +245,9 @@ pub(crate) fn update_plot_labels(
                                     font_size,
                                     Vec2::new(x0 + x_pos + font_offset_x, center_dist_y)
                                         .extend(text_z_plane),
-                                    VerticalAlign::Top,
-                                    HorizontalAlign::Right,
+                                    TextAlignment::Right,
                                     plot.tick_label_color,
-                                    &font_handle,
+                                    font_handle,
                                 );
                             }
                         }
@@ -308,10 +297,10 @@ pub(crate) fn update_plot_labels(
                             // }
 
                             let y_str = format_numeric_label(
-                                &plot,
+                                plot,
                                 i as f32 * plot.tick_period.y,
                                 // scientific notation if the numbers are larger than 1000 or smaller than 0.01
-                                max_abs_y >= 1000.0 || max_abs_y < 0.01,
+                                !(0.01..1000.0).contains(&max_abs_y),
                             );
 
                             // leftmost position on the x axis
@@ -333,8 +322,7 @@ pub(crate) fn update_plot_labels(
                                     font_size,
                                     Vec2::new(center_dist_x, y0 + y_pos + font_offset_y)
                                         .extend(0.0001),
-                                    VerticalAlign::Top,
-                                    HorizontalAlign::Left,
+                                    TextAlignment::Left,
                                     plot.tick_label_color,
                                     font_handle,
                                 );
@@ -377,16 +365,15 @@ pub(crate) fn spawn_graph(
 ) {
     for event in spawn_graph_event.iter() {
         let plot_handle = event.plot_handle.clone();
-        let plot = plots.get(plot_handle.clone()).unwrap();
+        let plot = plots.get(&plot_handle).unwrap();
 
-        let material = CanvasMaterial::new(&plot);
+        let material = CanvasMaterial::new(plot);
 
         let canvas_material_handle = materials.add(material);
 
         // quad
         let plot_entity = commands
-            .spawn()
-            .insert_bundle(MaterialMesh2dBundle {
+            .spawn(MaterialMesh2dBundle {
                 mesh: Mesh2dHandle(meshes.add(Mesh::from(shape::Quad::new(plot.canvas_size)))),
                 material: canvas_material_handle.clone(),
                 transform: Transform::from_translation(plot.canvas_position.extend(0.0001)),
@@ -397,7 +384,7 @@ pub(crate) fn spawn_graph(
             .id();
 
         wait_for_update_labels_event.send(WaitForUpdatePlotLabelsEvent {
-            quad_entity: plot_entity.clone(),
+            quad_entity: plot_entity,
             plot_handle: plot_handle.clone(),
         });
 
@@ -424,10 +411,10 @@ fn format_numeric_label(plot: &Plot, label: f32, scientific_notation: bool) -> S
     // if max_abs_y >= 1000.0 || max_abs_y < 0.01 {
     if scientific_notation {
         let mut formatted = format!("{:+.1$e}", label, plot.significant_digits);
-        if let Some(rest) = formatted.strip_prefix("+") {
+        if let Some(rest) = formatted.strip_prefix('+') {
             formatted = rest.to_string();
         }
-        return formatted;
+        formatted
     } else {
         format!("{:.1$}", label, plot.significant_digits)
     }
@@ -490,14 +477,14 @@ pub(crate) fn change_plot(
     mut release_all_event: EventWriter<ReleaseAllEvent>,
     mut update_plot_labels_event: EventWriter<UpdatePlotLabelsEvent>,
     mut update_target_labels_event: EventWriter<UpdateTargetLabelEvent>,
-    mut windows: ResMut<Windows>,
+    mut primary_query: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     for (canvas_entity, graph_sprite, plot_handle, canvas_material_handle) in canvas_query.iter() {
         //
         if let Some(plot) = my_plots.get_mut(plot_handle) {
             plot.plot_coord_mouse_pos = plot.world_to_plot(cursor.position);
 
-            graph_sprite.hovered_on_plot_edges(cursor.position, &mut windows);
+            graph_sprite.hovered_on_plot_edges(cursor.position, &mut primary_query);
 
             for event in mouse_motion_events.iter() {
                 //
@@ -559,8 +546,10 @@ pub(crate) fn release_all(
     mut query2: Query<(Entity, &mut Canvas), With<ResizePlotWindow>>,
     query3: Query<Entity, With<MoveAxes>>,
     mut release_all_event: EventReader<ReleaseAllEvent>,
-    mut windows: ResMut<Windows>,
+    mut primary_query: Query<&mut Window, With<PrimaryWindow>>,
 ) {
+    let mut primary_window = primary_query.get_single_mut().unwrap();
+
     for _ in release_all_event.iter() {
         for (entity, mut graph_sprite) in query2.iter_mut() {
             commands.entity(entity).remove::<ResizePlotWindow>();
@@ -569,8 +558,7 @@ pub(crate) fn release_all(
         for entity in query3.iter() {
             commands.entity(entity).remove::<MoveAxes>();
         }
-        let window = windows.get_primary_mut().unwrap();
-        window.set_cursor_icon(CursorIcon::Default);
+        primary_window.cursor.icon = CursorIcon::Default;
     }
 }
 
@@ -585,7 +573,8 @@ pub(crate) fn adjust_graph_size(
         ),
         Without<Locked>,
     >,
-    mut my_canvas_mat: ResMut<Assets<CanvasMaterial>>,
+    //mut my_canvas_mat: ResMut<Assets<CanvasMaterial>>,
+    mut my_plots: ResMut<Assets<Plot>>,
     cursor: Res<Cursor>,
     mut update_labels_event: EventWriter<UpdatePlotLabelsEvent>,
 ) {
@@ -594,7 +583,7 @@ pub(crate) fn adjust_graph_size(
     {
         //
 
-        if let Some(plot) = my_canvas_mat.get_mut(plot_handle) {
+        if let Some(plot) = my_plots.get_mut(plot_handle) {
             let delta = cursor.pos_relative_to_click;
             let mut new_transform_scale;
 
@@ -643,7 +632,7 @@ pub(crate) fn adjust_graph_size(
 
             graph_sprite.scale = transform.scale.truncate();
 
-            plot.size = graph_sprite.scale * graph_sprite.original_size;
+            plot.canvas_size = graph_sprite.scale * graph_sprite.original_size;
 
             update_labels_event.send(UpdatePlotLabelsEvent {
                 plot_handle: plot_handle.clone(),

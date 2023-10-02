@@ -6,17 +6,15 @@ pub use canvas_actions::*;
 use bevy::{
     ecs::system::{lifetimeless::SRes, SystemParamItem},
     prelude::*,
-    reflect::TypeUuid,
+    reflect::{TypePath, TypeUuid},
     render::{
         render_asset::{PrepareAssetError, RenderAsset},
-        render_resource::{
-            std140::{AsStd140, Std140},
-            *,
-        },
+        render_resource::{ShaderType, *},
         renderer::RenderDevice,
     },
     sprite::Material2d,
     sprite::Material2dPipeline,
+    window::PrimaryWindow,
 };
 
 use crate::plot::*;
@@ -28,6 +26,7 @@ pub(crate) struct PlotLabel;
 #[derive(Component)]
 pub(crate) struct TargetLabel;
 
+#[derive(Event)]
 pub(crate) struct SpawnGraphEvent {
     pub plot_handle: Handle<Plot>,
     pub canvas: Canvas,
@@ -63,14 +62,11 @@ pub(crate) struct Canvas {
 impl Canvas {
     pub(crate) fn within_rect(&self, position: Vec2) -> bool {
         let size = self.original_size * self.scale;
-        if position.x < self.position.x + size.x / 2.0
+
+        position.x < self.position.x + size.x / 2.0
             && position.x > self.position.x - size.x / 2.0
             && position.y < self.position.y + size.y / 2.0
             && position.y > self.position.y - size.y / 2.0
-        {
-            return true;
-        }
-        return false;
     }
 
     pub(crate) fn clicked_on_plot_corner(
@@ -126,7 +122,11 @@ impl Canvas {
         }
     }
 
-    pub(crate) fn hovered_on_plot_edges(&self, position: Vec2, windows: &mut ResMut<Windows>) {
+    pub(crate) fn hovered_on_plot_edges(
+        &self,
+        position: Vec2,
+        primary_query: &mut Query<&mut Window, With<PrimaryWindow>>,
+    ) {
         let size = self.original_size * self.scale;
 
         let top_right = self.position + Vec2::new(size.x / 2.0, size.y / 2.0);
@@ -135,30 +135,30 @@ impl Canvas {
         let bottom_right = self.position + Vec2::new(size.x / 2.0, -size.y / 2.0);
 
         let mut set_to_default_cursor = true;
-        let window = windows.get_primary_mut().unwrap();
+        let mut window = primary_query.get_single_mut().unwrap();
 
         if (top_left - position).length() < self.hover_radius {
-            window.set_cursor_icon(CursorIcon::NwResize);
+            window.cursor.icon = CursorIcon::NwResize;
             set_to_default_cursor = false;
         }
 
         if (top_right - position).length() < self.hover_radius {
-            window.set_cursor_icon(CursorIcon::NeResize);
+            window.cursor.icon = CursorIcon::NeResize;
             set_to_default_cursor = false;
         }
 
         if (bottom_left - position).length() < self.hover_radius {
-            window.set_cursor_icon(CursorIcon::SwResize);
+            window.cursor.icon = CursorIcon::SwResize;
             set_to_default_cursor = false;
         }
 
         if (bottom_right - position).length() < self.hover_radius {
-            window.set_cursor_icon(CursorIcon::SeResize);
+            window.cursor.icon = CursorIcon::SeResize;
             set_to_default_cursor = false;
         }
 
         if set_to_default_cursor {
-            window.set_cursor_icon(CursorIcon::Default);
+            window.cursor.icon = CursorIcon::Default;
         }
     }
 }
@@ -173,11 +173,13 @@ pub(crate) struct ZoomAxes {
     pub mouse_pos: Vec2,
 }
 
+#[derive(Event)]
 pub(crate) struct UpdatePlotLabelsEvent {
     pub plot_handle: Handle<Plot>,
     pub canvas_entity: Entity,
 }
 
+#[derive(Event)]
 pub(crate) struct UpdateTargetLabelEvent {
     pub plot_handle: Handle<Plot>,
     pub canvas_entity: Entity,
@@ -186,7 +188,19 @@ pub(crate) struct UpdateTargetLabelEvent {
 }
 
 /// Canvas shader parameters
-#[derive(TypeUuid, Debug, Clone, Component, AsStd140)]
+#[repr(C)]
+#[derive(
+    TypeUuid,
+    Debug,
+    Copy,
+    Clone,
+    Component,
+    ShaderType,
+    TypePath,
+    AsBindGroup,
+    bytemuck::Pod,
+    bytemuck::Zeroable,
+)]
 #[uuid = "1e08866c-0b8a-437e-8bae-38844b21137e"]
 #[allow(non_snake_case)]
 pub(crate) struct CanvasMaterial {
@@ -212,6 +226,8 @@ pub(crate) struct CanvasMaterial {
 
     pub show_grid: f32,
     pub show_axes: f32,
+    _padding1: u32,
+    _padding2: u32,
 }
 
 impl CanvasMaterial {
@@ -219,7 +235,7 @@ impl CanvasMaterial {
         CanvasMaterial {
             mouse_pos: Vec2::ZERO,
             tick_period: plot.tick_period,
-            bounds: plot.bounds.clone(),
+            bounds: plot.bounds,
             time: 0.0,
             zoom: 1.0,
             size: plot.canvas_size,
@@ -237,6 +253,8 @@ impl CanvasMaterial {
             target_color: col_to_vec4(plot.target_color),
             show_grid: if plot.show_grid { 1.0 } else { 0.0 },
             show_axes: if plot.show_axes { 1.0 } else { 0.0 },
+            _padding1: 0,
+            _padding2: 0,
         }
     }
 
@@ -246,7 +264,7 @@ impl CanvasMaterial {
 
         self.position = plot.canvas_position;
         self.tick_period = plot.tick_period;
-        self.bounds = plot.bounds.clone();
+        self.bounds = plot.bounds;
         self.zoom = plot.zoom;
         self.time = plot.time;
         self.size = plot.canvas_size;
@@ -274,7 +292,8 @@ impl CanvasMaterial {
         {
             return true;
         }
-        return false;
+
+        false
     }
 }
 
@@ -298,7 +317,7 @@ impl Plugin for CanvasMesh2dPlugin {
 
         shaders.set_untracked(
             handle_untyped.clone(),
-            Shader::from_wgsl(include_str!("canvas.wgsl")),
+            Shader::from_wgsl(include_str!("canvas.wgsl"), file!()),
         );
 
         // // at the moment, there seems to be no way to include a font in the crate
@@ -306,18 +325,29 @@ impl Plugin for CanvasMesh2dPlugin {
     }
 }
 
-impl Material2d for CanvasMaterial {
-    fn fragment_shader(_asset_server: &AssetServer) -> Option<Handle<Shader>> {
-        let handle_untyped = CANVAS_SHADER_HANDLE.clone();
-        let shader_handle: Handle<Shader> = handle_untyped.typed::<Shader>();
-        Some(shader_handle)
+/*
+impl AsBindGroup for CanvasMaterial{
+    type CanvasMaterial;
+
+    fn as_bind_group(
+        &self,
+        layout: &BindGroupLayout,
+        render_device: &RenderDevice,
+        images: &bevy::render::render_asset::RenderAssets<Image>,
+        fallback_image: &bevy::render::texture::FallbackImage,
+    ) -> Result<PreparedBindGroup<Self::Data>, AsBindGroupError> {
+        images.as_bind_group_shader_type(images)
     }
+    /*
 
     fn bind_group(render_asset: &<Self as RenderAsset>::PreparedAsset) -> &BindGroup {
         &render_asset.bind_group
     }
+     */
 
-    fn bind_group_layout(render_device: &RenderDevice) -> BindGroupLayout {
+    fn bind_group_layout(render_device: &RenderDevice) -> BindGroupLayout
+    where
+        Self: Sized {
         render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             entries: &[BindGroupLayoutEntry {
                 binding: 0,
@@ -332,6 +362,27 @@ impl Material2d for CanvasMaterial {
             label: None,
         })
     }
+
+}
+*/
+
+impl Material2d for CanvasMaterial {
+    fn fragment_shader() -> ShaderRef {
+        let handle_untyped = CANVAS_SHADER_HANDLE.clone();
+        handle_untyped.typed::<Shader>().into()
+    }
+
+    fn vertex_shader() -> ShaderRef {
+        ShaderRef::Default
+    }
+
+    fn specialize(
+        _descriptor: &mut RenderPipelineDescriptor,
+        _layout: &bevy::render::mesh::MeshVertexBufferLayout,
+        _key: bevy::sprite::Material2dKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        Ok(())
+    }
 }
 
 impl RenderAsset for CanvasMaterial {
@@ -339,15 +390,14 @@ impl RenderAsset for CanvasMaterial {
     type PreparedAsset = GpuCanvasMaterial;
     type Param = (SRes<RenderDevice>, SRes<Material2dPipeline<Self>>);
     fn extract_asset(&self) -> Self::ExtractedAsset {
-        self.clone()
+        *self
     }
 
     fn prepare_asset(
         extracted_asset: Self::ExtractedAsset,
         (render_device, material_pipeline): &mut SystemParamItem<Self::Param>,
     ) -> Result<Self::PreparedAsset, PrepareAssetError<Self::ExtractedAsset>> {
-        let custom_material_std140 = extracted_asset.as_std140();
-        let custom_material_bytes = custom_material_std140.as_bytes();
+        let custom_material_bytes = bytemuck::bytes_of(&extracted_asset);
 
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             contents: custom_material_bytes,

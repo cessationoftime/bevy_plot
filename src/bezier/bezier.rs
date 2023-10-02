@@ -1,30 +1,36 @@
 use bevy::{
-    core::FloatOrd,
-    core_pipeline::Transparent2d,
+    core_pipeline::core_2d::Transparent2d,
     ecs::system::lifetimeless::{Read, SQuery, SRes},
     ecs::system::SystemParamItem,
     prelude::*,
     reflect::TypeUuid,
     // reflect::TypeUuid,
     render::{
-        mesh::{Indices, MeshVertexAttribute, MeshVertexBufferLayout},
+        extract_component::{ComponentUniforms, DynamicUniformIndex, UniformComponentPlugin},
+        mesh::{
+            Indices,
+            MeshVertexAttribute,
+            // MeshVertexBufferLayout
+        },
         render_asset::RenderAssets,
-        render_component::{ComponentUniforms, DynamicUniformIndex, UniformComponentPlugin},
         render_phase::{
-            AddRenderCommand, DrawFunctions, EntityRenderCommand, RenderCommandResult, RenderPhase,
+            AddRenderCommand, DrawFunctions, RenderCommand, RenderCommandResult, RenderPhase,
             SetItemPipeline, TrackedRenderPass,
         },
-        render_resource::{std140::AsStd140, *},
+        render_resource::{ShaderType, *},
         renderer::RenderDevice,
         texture::BevyDefault,
-        texture::GpuImage,
+        // texture::GpuImage,
         view::VisibleEntities,
-        RenderApp, RenderStage,
+        Render,
+        RenderApp,
+        RenderSet,
     },
     sprite::{
         DrawMesh2d, Mesh2dHandle, Mesh2dPipeline, Mesh2dPipelineKey, Mesh2dUniform,
         SetMesh2dBindGroup, SetMesh2dViewBindGroup,
     },
+    utils::FloatOrd,
 };
 
 use crate::plot::*;
@@ -61,7 +67,7 @@ impl Line {
 }
 
 // Compute derivatives at each point
-pub(crate) fn make_df(xs: &Vec<f32>, time: f32, f: &fn(f32, f32) -> f32) -> (Vec<Vec2>, Vec<Vec2>) {
+pub(crate) fn make_df(xs: &[f32], time: f32, f: &fn(f32, f32) -> f32) -> (Vec<Vec2>, Vec<Vec2>) {
     let delta = (xs[1] - xs[0]) / 1000.0;
 
     // derivatives
@@ -76,7 +82,7 @@ pub(crate) fn make_df(xs: &Vec<f32>, time: f32, f: &fn(f32, f32) -> f32) -> (Vec
         .map(|q| Vec2::new(q.y, -q.x).normalize())
         .collect::<Vec<Vec2>>();
 
-    return (dfs, ns);
+    (dfs, ns)
 
     // // Code for computing the derivatives of an array instead of a function
     // let df0 = (f(xs[1]) - f(xs[0])) / (xs[1] - xs[0]);
@@ -115,7 +121,7 @@ pub(crate) fn make_df(xs: &Vec<f32>, time: f32, f: &fn(f32, f32) -> f32) -> (Vec
 }
 
 /// Uniform sent to bezier_spline.wgsl
-#[derive(Component, Clone, AsStd140)]
+#[derive(Component, Clone, ShaderType)]
 pub(crate) struct BezierCurveUniform {
     /// If set to > 0.5, the curve will be split into mechanical joints, but it's just a look
     pub mech: f32,
@@ -162,6 +168,7 @@ pub(crate) fn update_bezier_uniform(
     }
 }
 
+#[derive(Event)]
 pub(crate) struct SpawnBezierCurveEvent {
     pub group_number: usize,
     pub plot_handle: Handle<Plot>,
@@ -180,7 +187,7 @@ pub(crate) fn spawn_bezier_function(
     // for event in spawn_beziercurve_event.iter() {
     for event in spawn_beziercurve_event.iter() {
         //
-        if let Some(mut plot) = plots.get_mut(event.plot_handle.clone()) {
+        if let Some(mut plot) = plots.get_mut(&event.plot_handle) {
             //
             // remove all the bezier curves
             // TODO: currently runs proportionally to curve_number^2. Optimize
@@ -199,7 +206,7 @@ pub(crate) fn spawn_bezier_function(
                 &mut meshes,
                 xs,
                 event.group_number,
-                &mut plot,
+                plot,
                 &event.plot_handle,
                 &time,
             );
@@ -238,11 +245,11 @@ fn plot_fn(
     plot.compute_zeros();
 
     if let Some(bezier_curve) = plot.data.bezier_groups.get(curve_number) {
-        let func = bezier_curve.function.clone();
+        let func = bezier_curve.function;
 
         let num_pts = plot.bezier_num_points;
 
-        let t = time.seconds_since_startup() as f32;
+        let t = time.elapsed_seconds();
         let ys = xs
             .iter()
             .map(|x| Vec2::new(*x, func(*x, t)))
@@ -273,12 +280,11 @@ fn plot_fn(
         let mut inds: Vec<u32> = vec![];
 
         let mut controls = Vec::new();
-        let mut kk = 0;
 
         let bounds_world = plot.compute_bounds_world();
 
         let line_width = 30.0;
-        for k in 0..num_pts - 1 {
+        for (kk, k) in (0..num_pts - 1).enumerate() {
             // TODO: Figure out what quadt-offset does
             let quadt_offset = line_width * 10.0;
 
@@ -392,7 +398,6 @@ fn plot_fn(
                     ys_world[k + 1].y,
                 ]);
             }
-            kk = kk + 1;
         }
 
         let mut mesh_pos_attributes: Vec<[f32; 3]> = Vec::new();
@@ -420,8 +425,8 @@ fn plot_fn(
         // println!("mesh: {:?}", mesh.iter().map(|x| ));
 
         commands
-            .spawn_bundle((
-                BezierMesh2d::default(),
+            .spawn((
+                BezierMesh2d,
                 Mesh2dHandle(meshes.add(mesh)),
                 GlobalTransform::default(),
                 Transform::from_translation(plot.canvas_position.extend(1.10)),
@@ -447,6 +452,7 @@ fn plot_fn(
 #[derive(Component, Default)]
 pub(crate) struct BezierMesh2d;
 
+#[derive(Resource)]
 struct BezierMesh2dPipeline {
     // pub view_layout: BindGroupLayout,
     // pub mesh_layout: BindGroupLayout,
@@ -472,9 +478,7 @@ impl FromWorld for BezierMesh2dPipeline {
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: true,
-                        min_binding_size: BufferSize::new(
-                            BezierCurveUniform::std140_size_static() as u64
-                        ),
+                        min_binding_size: BufferSize::new(BezierCurveUniform::min_size().get()),
                     },
                     count: None,
                 }],
@@ -549,21 +553,21 @@ impl SpecializedRenderPipeline for BezierMesh2dPipeline {
                 shader: key.shader_handle.clone(),
                 shader_defs: Vec::new(),
                 entry_point: "fragment".into(),
-                targets: vec![ColorTargetState {
+                targets: vec![Some(ColorTargetState {
                     format: TextureFormat::bevy_default(),
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
-                }],
+                })],
             }),
             // Use the two standard uniforms for 2d meshes
-            layout: Some(vec![
+            layout: vec![
                 // Bind group 0 is the view uniform
                 self.mesh2d_pipeline.view_layout.clone(),
                 // Bind group 1 is the mesh uniform
                 self.mesh2d_pipeline.mesh_layout.clone(),
                 //
                 self.custom_uniform_layout.clone(),
-            ]),
+            ],
             primitive: PrimitiveState {
                 front_face: FrontFace::Ccw,
                 cull_mode: Some(Face::Back),
@@ -580,6 +584,7 @@ impl SpecializedRenderPipeline for BezierMesh2dPipeline {
                 alpha_to_coverage_enabled: false,
             },
             label: Some("colored_mesh2d_pipeline".into()),
+            push_constant_ranges: vec![],
         }
 
         // descriptor.vertex.shader = key.shader_handle.clone();
@@ -641,6 +646,7 @@ type DrawBezierMesh2d = (
 /// Plugin that renders [`BezierMesh2d`]s
 pub(crate) struct BezierMesh2dPlugin;
 
+#[derive(Resource)]
 pub(crate) struct BezierShaderHandle(pub Handle<Shader>);
 
 pub const BEZIER_SHADER_HANDLE: HandleUntyped =
@@ -655,22 +661,34 @@ impl Plugin for BezierMesh2dPlugin {
 
         shaders.set_untracked(
             handle_untyped.clone(),
-            Shader::from_wgsl(include_str!("bezier_spline.wgsl")),
+            Shader::from_wgsl(include_str!("bezier_spline.wgsl"), "bezier_spline.wgsl"),
         );
 
         let shader_typed_handle = shaders.get_handle(handle_untyped);
 
-        app.add_plugin(UniformComponentPlugin::<BezierCurveUniform>::default());
+        app.add_plugins(UniformComponentPlugin::<BezierCurveUniform>::default());
 
         let render_app = app.get_sub_app_mut(RenderApp).unwrap();
         render_app
             .add_render_command::<Transparent2d, DrawBezierMesh2d>()
-            .init_resource::<BezierMesh2dPipeline>()
-            .init_resource::<SpecializedRenderPipelines<BezierMesh2dPipeline>>()
             .insert_resource(BezierShaderHandle(shader_typed_handle))
-            .add_system_to_stage(RenderStage::Extract, extract_colored_mesh2d)
-            .add_system_to_stage(RenderStage::Queue, queue_customuniform_bind_group)
-            .add_system_to_stage(RenderStage::Queue, queue_colored_mesh2d);
+            .add_systems(
+                Render,
+                extract_colored_mesh2d.in_set(RenderSet::ExtractCommands),
+            )
+            .add_systems(
+                Render,
+                queue_customuniform_bind_group.in_set(RenderSet::Queue),
+            )
+            .add_systems(Render, queue_colored_mesh2d.in_set(RenderSet::Queue));
+    }
+
+    fn finish(&self, app: &mut App) {
+        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .init_resource::<BezierMesh2dPipeline>()
+                .init_resource::<SpecializedRenderPipelines<BezierMesh2dPipeline>>();
+        }
     }
 }
 
@@ -681,7 +699,7 @@ fn extract_colored_mesh2d(
 ) {
     let mut values = Vec::with_capacity(*previous_len);
     for (entity, custom_uni, computed_visibility) in query.iter() {
-        if !computed_visibility.is_visible {
+        if !computed_visibility.is_visible() {
             continue;
         }
         values.push((entity, (custom_uni.clone(), BezierMesh2d)));
@@ -691,6 +709,8 @@ fn extract_colored_mesh2d(
 }
 
 /// I can't make this private because it's tied to BezierCurveUniform, which is public
+///
+#[derive(Resource)]
 struct BezierCurveUniformBindGroup {
     value: BindGroup,
 }
@@ -722,7 +742,7 @@ fn queue_colored_mesh2d(
     transparent_draw_functions: Res<DrawFunctions<Transparent2d>>,
     colored_mesh2d_pipeline: Res<BezierMesh2dPipeline>,
     mut pipelines: ResMut<SpecializedRenderPipelines<BezierMesh2dPipeline>>,
-    mut pipeline_cache: ResMut<PipelineCache>,
+    pipeline_cache: Res<PipelineCache>,
     msaa: Res<Msaa>,
     render_meshes: Res<RenderAssets<Mesh>>,
     shader_handle: Res<BezierShaderHandle>,
@@ -740,7 +760,7 @@ fn queue_colored_mesh2d(
             .unwrap();
 
         let mesh_key = BezierPipelineKey {
-            mesh: Mesh2dPipelineKey::from_msaa_samples(msaa.samples),
+            mesh: Mesh2dPipelineKey::from_msaa_samples(msaa.samples()),
             shader_handle: shader_handle.0.clone(),
         };
 
@@ -753,7 +773,7 @@ fn queue_colored_mesh2d(
                         Mesh2dPipelineKey::from_primitive_topology(mesh.primitive_topology);
 
                     let pipeline_id = pipelines.specialize(
-                        &mut pipeline_cache,
+                        &pipeline_cache,
                         &colored_mesh2d_pipeline,
                         bezier_key,
                         // &mesh.layout.clone(),
@@ -774,19 +794,23 @@ fn queue_colored_mesh2d(
 }
 
 struct SetBezierCurveUniformBindGroup<const I: usize>;
-impl<const I: usize> EntityRenderCommand for SetBezierCurveUniformBindGroup<I> {
+impl<const I: usize> RenderCommand<Transparent2d> for SetBezierCurveUniformBindGroup<I> {
     type Param = (
         SRes<BezierCurveUniformBindGroup>,
         SQuery<Read<DynamicUniformIndex<BezierCurveUniform>>>,
     );
+    type ViewWorldQuery = ();
+    type ItemWorldQuery = ();
+
     #[inline]
     fn render<'w>(
-        _view: Entity,
-        item: Entity,
+        _item: &Transparent2d,
+        _view: bevy::ecs::query::ROQueryItem<'w, Self::ViewWorldQuery>,
+        _entity: bevy::ecs::query::ROQueryItem<'w, Self::ItemWorldQuery>,
         (mesh2d_bind_group, mesh2d_query): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let mesh2d_index = mesh2d_query.get(item).unwrap();
+        let mesh2d_index = mesh2d_query.get_single().unwrap();
 
         pass.set_bind_group(
             I,

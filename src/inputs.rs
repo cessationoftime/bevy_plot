@@ -2,6 +2,7 @@ use bevy::{
     // input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
     render::camera::OrthographicProjection,
+    window::PrimaryWindow,
     // sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
 
@@ -9,6 +10,7 @@ use bevy::{
 // use crate::markers::SpawnMarkersEvent;
 // use crate::util::*;
 
+#[derive(Resource)]
 pub(crate) struct Cursor {
     pub position: Vec2,
     pub pos_relative_to_click: Vec2,
@@ -29,16 +31,14 @@ pub(crate) fn record_mouse_events_system(
     mut cursor_moved_events: EventReader<CursorMoved>,
     mouse_button_input: Res<Input<MouseButton>>,
     mut cursor_res: ResMut<Cursor>,
-    mut windows: ResMut<Windows>,
+    primary_query: Query<&Window, With<PrimaryWindow>>,
     cam_transform_query: Query<&Transform, With<OrthographicProjection>>,
     cam_ortho_query: Query<&OrthographicProjection>,
 ) {
+    let primary_window = primary_query.get_single().unwrap();
     for event in cursor_moved_events.iter() {
         let cursor_in_pixels = event.position; // lower left is origin
-        let window_size = Vec2::new(
-            windows.get_primary_mut().unwrap().width(),
-            windows.get_primary_mut().unwrap().height(),
-        );
+        let window_size = Vec2::new(primary_window.width(), primary_window.height());
 
         let screen_position = cursor_in_pixels - window_size / 2.0;
 

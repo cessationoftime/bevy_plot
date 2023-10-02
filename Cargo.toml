@@ -13,10 +13,11 @@ categories = [
 ]
 
 [dependencies]
-bevy = { version = "0.7.0", default-features = false, features = [ "render", "x11",] }
+bevy = { version = "0.11", default-features = false, features = [ "bevy_text","bevy_core_pipeline", "bevy_render", "x11", "bevy_sprite", "bevy_winit"] }
 itertools-num = "0.1"
-bytemuck = "1.7"
+bytemuck = "1.14"
 rand = "0.8"
+glam = {version = "0.24", features = ["bytemuck"]}
 
 [features]
 default = []

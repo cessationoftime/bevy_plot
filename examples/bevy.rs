@@ -1,30 +1,29 @@
 use bevy::prelude::*;
 use bevy_plot::*;
 
-use std::collections::HashMap;
-
 fn main() {
     App::new()
-        .insert_resource(WindowDescriptor {
-            width: 1000.,
-            height: 800.,
-            ..Default::default()
-        })
-        .add_plugins(DefaultPlugins)
-        .add_plugin(PlotPlugin)
-        .add_startup_system(setup)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                resolution: (1000., 800.).into(),
+                ..default()
+            }),
+            ..default()
+        }))
+        .add_plugins(PlotPlugin)
+        .add_systems(Startup, setup)
         .run();
 }
 
 // MouseButton::Middle toggles a target with x/y labels at the position of the mouse
 fn setup(
     mut commands: Commands,
-    colors_res: Res<HashMap<PlotColor, Vec<Color>>>,
+    colors_res: Res<ResourceHashMap<PlotColor, Vec<Color>>>,
     mut plots: ResMut<Assets<Plot>>,
     asset_server: Res<AssetServer>,
     mut maybe_font: ResMut<TickLabelFont>,
 ) {
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    commands.spawn(Camera2dBundle::default());
     let font: Handle<Font> = asset_server.load("fonts/Roboto-Bold.ttf");
     maybe_font.maybe_font = Some(font);
 
@@ -37,7 +36,7 @@ fn setup(
     plot.show_target = true;
     plot.show_grid = false;
 
-    let colors = colors_res.as_ref();
+    let colors = &colors_res.as_ref().hashmap;
     plot.tick_label_color = colors.get(&PlotColor::Black).unwrap()[5];
     plot.background_color1 = colors.get(&PlotColor::Cream).unwrap()[1];
     plot.background_color2 = colors.get(&PlotColor::Cream).unwrap()[2] * 0.8;
@@ -438,5 +437,5 @@ fn setup(
     );
 
     let plot_handle = plots.add(plot.clone());
-    commands.spawn().insert(plot_handle);
+    commands.spawn(plot_handle);
 }

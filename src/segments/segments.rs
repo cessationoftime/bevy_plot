@@ -1,28 +1,28 @@
 use bevy::{
-    core::FloatOrd,
-    core_pipeline::Transparent2d,
+    core_pipeline::core_2d::Transparent2d,
     ecs::system::lifetimeless::{Read, SQuery, SRes},
     ecs::system::SystemParamItem,
     prelude::*,
     reflect::TypeUuid,
     render::{
+        extract_component::{ComponentUniforms, DynamicUniformIndex, UniformComponentPlugin},
         mesh::{Indices, MeshVertexAttribute, MeshVertexBufferLayout},
         render_asset::RenderAssets,
-        render_component::{ComponentUniforms, DynamicUniformIndex, UniformComponentPlugin},
         render_phase::{
-            AddRenderCommand, DrawFunctions, EntityRenderCommand, RenderCommandResult, RenderPhase,
+            AddRenderCommand, DrawFunctions, RenderCommand, RenderCommandResult, RenderPhase,
             SetItemPipeline, TrackedRenderPass,
         },
-        render_resource::{std140::AsStd140, *},
+        render_resource::{ShaderType, *},
         renderer::RenderDevice,
         view::VisibleEntities,
-        RenderApp, RenderStage,
+        Render, RenderApp, RenderSet,
         {texture::BevyDefault, texture::GpuImage},
     },
     sprite::{
         DrawMesh2d, Mesh2dHandle, Mesh2dPipeline, Mesh2dPipelineKey, Mesh2dUniform,
         SetMesh2dBindGroup, SetMesh2dViewBindGroup,
     },
+    utils::FloatOrd,
 };
 
 use crate::plot::*;
@@ -45,8 +45,8 @@ pub(crate) fn segments_setup(
             }
         }
 
-        if let Some(mut plot) = plots.get_mut(&event.plot_handle) {
-            plot_segments(&mut commands, &mut meshes, &mut plot, &event.plot_handle)
+        if let Some(plot) = plots.get_mut(&event.plot_handle) {
+            plot_segments(&mut commands, &mut meshes, plot, &event.plot_handle)
         }
     }
 }
@@ -85,7 +85,7 @@ fn make_df(ys: &Vec<Vec2>) -> (Vec<Vec2>, Vec<Vec2>) {
         .map(|q| Vec2::new(*q, -1.0).normalize())
         .collect::<Vec<Vec2>>();
 
-    return (dfs_vec2, ns_vec2);
+    (dfs_vec2, ns_vec2)
 }
 
 fn plot_segments(
@@ -194,8 +194,8 @@ fn plot_segments(
         mesh.insert_attribute(mva_controls, mesh_attr_controls);
 
         commands
-            .spawn_bundle((
-                SegmentMesh2d::default(),
+            .spawn((
+                SegmentMesh2d,
                 Mesh2dHandle(meshes.add(mesh)),
                 GlobalTransform::default(),
                 Transform::from_translation(plot.canvas_position.extend(1.11)),
@@ -220,7 +220,7 @@ fn plot_segments(
 pub(crate) struct SegmentMesh2d;
 
 /// Shader uniform parameters sent to segments.wgsl.
-#[derive(Component, Clone, AsStd140)]
+#[derive(Component, Clone, ShaderType)]
 pub(crate) struct SegmentUniform {
     pub color: Vec4,
     /// gives segments a mechanical joint look if > 0.5
@@ -233,6 +233,7 @@ pub(crate) struct SegmentUniform {
     pub canvas_position: Vec2,
 }
 
+#[derive(Resource)]
 struct SegmentMesh2dPipeline {
     pub view_layout: BindGroupLayout,
     pub mesh_layout: BindGroupLayout,
@@ -258,9 +259,7 @@ impl FromWorld for SegmentMesh2dPipeline {
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: true,
-                        min_binding_size: BufferSize::new(
-                            SegmentUniform::std140_size_static() as u64
-                        ),
+                        min_binding_size: BufferSize::new(SegmentUniform::min_size().get()),
                     },
                     count: None,
                 }],
@@ -348,14 +347,14 @@ impl SpecializedMeshPipeline for SegmentMesh2dPipeline {
                 shader: key.shader_handle.clone(),
                 shader_defs: Vec::new(),
                 entry_point: "fragment".into(),
-                targets: vec![ColorTargetState {
+                targets: vec![Some(ColorTargetState {
                     format: TextureFormat::bevy_default(),
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
-                }],
+                })],
             }),
             // Use the two standard uniforms for 2d meshes
-            layout: Some(vec![
+            layout: vec![
                 // Bind group 0 is the view uniform
                 self.view_layout.clone(),
                 // Bind group 1 is the mesh uniform
@@ -363,7 +362,7 @@ impl SpecializedMeshPipeline for SegmentMesh2dPipeline {
                 self.custom_uniform_layout.clone(),
                 // texture
                 // self.material_layout.clone(),
-            ]),
+            ],
             primitive: PrimitiveState {
                 front_face: FrontFace::Ccw,
                 cull_mode: Some(Face::Back),
@@ -380,6 +379,7 @@ impl SpecializedMeshPipeline for SegmentMesh2dPipeline {
                 alpha_to_coverage_enabled: false,
             },
             label: Some("colored_mesh2d_pipeline".into()),
+            push_constant_ranges: vec![],
         })
     }
 }
@@ -400,6 +400,7 @@ type DrawSegmentMesh2d = (
 /// Plugin that renders [`SegmentMesh2d`]s
 pub(crate) struct SegmentMesh2dPlugin;
 
+#[derive(Resource)]
 pub(crate) struct SegmentShaderHandle(pub Handle<Shader>);
 
 pub const SEGMENT_SHADER_HANDLE: HandleUntyped = HandleUntyped::weak_from_u64(
@@ -415,22 +416,34 @@ impl Plugin for SegmentMesh2dPlugin {
 
         shaders.set_untracked(
             handle_untyped.clone(),
-            Shader::from_wgsl(include_str!("segments.wgsl")),
+            Shader::from_wgsl(include_str!("segments.wgsl"), "segments.wgsl"),
         );
 
         let shader_typed_handle = shaders.get_handle(handle_untyped);
 
-        app.add_plugin(UniformComponentPlugin::<SegmentUniform>::default());
+        app.add_plugins(UniformComponentPlugin::<SegmentUniform>::default());
 
         let render_app = app.get_sub_app_mut(RenderApp).unwrap();
         render_app
             .add_render_command::<Transparent2d, DrawSegmentMesh2d>()
-            .init_resource::<SegmentMesh2dPipeline>()
-            .init_resource::<SpecializedMeshPipelines<SegmentMesh2dPipeline>>()
             .insert_resource(SegmentShaderHandle(shader_typed_handle))
-            .add_system_to_stage(RenderStage::Extract, extract_colored_mesh2d)
-            .add_system_to_stage(RenderStage::Queue, queue_customuniform_bind_group)
-            .add_system_to_stage(RenderStage::Queue, queue_colored_mesh2d);
+            .add_systems(
+                Render,
+                extract_colored_mesh2d.in_set(RenderSet::ExtractCommands),
+            )
+            .add_systems(
+                Render,
+                queue_customuniform_bind_group.in_set(RenderSet::Queue),
+            )
+            .add_systems(Render, queue_colored_mesh2d.in_set(RenderSet::Queue));
+    }
+
+    fn finish(&self, app: &mut App) {
+        if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .init_resource::<SegmentMesh2dPipeline>()
+                .init_resource::<SpecializedMeshPipelines<SegmentMesh2dPipeline>>();
+        }
     }
 }
 
@@ -441,7 +454,7 @@ fn extract_colored_mesh2d(
 ) {
     let mut values = Vec::with_capacity(*previous_len);
     for (entity, custom_uni, computed_visibility) in query.iter() {
-        if !computed_visibility.is_visible {
+        if !computed_visibility.is_visible() {
             continue;
         }
         values.push((entity, (custom_uni.clone(), SegmentMesh2d)));
@@ -450,6 +463,7 @@ fn extract_colored_mesh2d(
     commands.insert_or_spawn_batch(values);
 }
 
+#[derive(Resource)]
 struct SegmentUniformBindGroup {
     value: BindGroup,
 }
@@ -481,7 +495,7 @@ fn queue_colored_mesh2d(
     transparent_draw_functions: Res<DrawFunctions<Transparent2d>>,
     colored_mesh2d_pipeline: Res<SegmentMesh2dPipeline>,
     mut pipelines: ResMut<SpecializedMeshPipelines<SegmentMesh2dPipeline>>,
-    mut pipeline_cache: ResMut<PipelineCache>,
+    pipeline_cache: Res<PipelineCache>,
     msaa: Res<Msaa>,
     render_meshes: Res<RenderAssets<Mesh>>,
     shader_handle: Res<SegmentShaderHandle>,
@@ -501,7 +515,7 @@ fn queue_colored_mesh2d(
         // let mesh_key = Mesh2dPipelineKey::from_msaa_samples(msaa.samples);
 
         let mesh_key = SegmentPipelineKey {
-            mesh: Mesh2dPipelineKey::from_msaa_samples(msaa.samples),
+            mesh: Mesh2dPipelineKey::from_msaa_samples(msaa.samples()),
             shader_handle: shader_handle.0.clone(),
         };
 
@@ -514,7 +528,7 @@ fn queue_colored_mesh2d(
                         Mesh2dPipelineKey::from_primitive_topology(mesh.primitive_topology);
 
                     if let Ok(pipeline_id) = pipelines.specialize(
-                        &mut pipeline_cache,
+                        &pipeline_cache,
                         &colored_mesh2d_pipeline,
                         segment_key,
                         &mesh.layout,
@@ -535,19 +549,24 @@ fn queue_colored_mesh2d(
 }
 
 struct SetSegmentUniformBindGroup<const I: usize>;
-impl<const I: usize> EntityRenderCommand for SetSegmentUniformBindGroup<I> {
+impl<const I: usize> RenderCommand<Transparent2d> for SetSegmentUniformBindGroup<I> {
     type Param = (
         SRes<SegmentUniformBindGroup>,
         SQuery<Read<DynamicUniformIndex<SegmentUniform>>>,
     );
+
+    type ViewWorldQuery = ();
+    type ItemWorldQuery = ();
+
     #[inline]
     fn render<'w>(
-        _view: Entity,
-        item: Entity,
+        _item: &Transparent2d,
+        _view: bevy::ecs::query::ROQueryItem<'w, Self::ViewWorldQuery>,
+        _entity: bevy::ecs::query::ROQueryItem<'w, Self::ItemWorldQuery>,
         (mesh2d_bind_group, mesh2d_query): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let mesh2d_index = mesh2d_query.get(item).unwrap();
+        let mesh2d_index = mesh2d_query.get_single().unwrap();
 
         pass.set_bind_group(
             I,

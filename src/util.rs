@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 // use std::collections::HashMap;
 
+#[derive(Event)]
 pub(crate) struct ReleaseAllEvent;
 
 #[derive(Component)]
