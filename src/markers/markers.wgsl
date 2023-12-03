@@ -5,7 +5,6 @@
 #import bevy_sprite::mesh2d_view_bindings view
 #import bevy_sprite::mesh2d_bindings mesh
 
-
 alias float4 = vec4<f32>;
 alias float2 = vec2<f32>;
 
@@ -64,7 +63,6 @@ fn toLinear(sRGB: float4) -> float4
 
     return mix(higher, lower, cutoff);
 }
-
 
 struct FragmentInput {
     @location(0) uv: vec2<f32>,
@@ -155,7 +153,6 @@ fn sdCircle(p: vec2<f32>, c: vec2<f32>, r: f32) -> f32 {
   return d - r;
 }
 
-
 fn sdRoundedBox(p: vec2<f32>, b: vec2<f32>, r: vec4<f32>) -> f32 {
   var x = r.x;
   var y = r.y;
@@ -170,7 +167,6 @@ fn sdBox(p: vec2<f32>, b: vec2<f32>) -> f32 {
   let d = (abs(p) - b) ;
   return length(max(d, vec2<f32>(0.))) + min(max(d.x, d.y), 0.);
 }
-
 
 struct MarkerUniform {
     marker_size: f32,
@@ -188,7 +184,6 @@ struct MarkerUniform {
 
 @group(1) @binding(0)
 var<uniform> uni: MarkerUniform;
-
 
 @fragment
 fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
@@ -278,7 +273,6 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
             
             out_col = mix(black, out_col, s);
         }
-
 
     // triangle -> 3
     } else if (point_type == 3) {

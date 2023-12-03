@@ -1,13 +1,6 @@
 // Import the standard 2d mesh uniforms and set their bind groups
 #import bevy_sprite::mesh2d_view_bindings view
-//@group(0) @binding(0)
-//var<uniform> view: View;
-
-
 #import bevy_sprite::mesh2d_bindings mesh
-
-//@group(1) @binding(0)
-//var<uniform> mesh: Mesh2d;
 
 alias float4 = vec4<f32>;
 alias float2 = vec2<f32>;
@@ -31,7 +24,6 @@ struct VertexOutput {
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
-
     var out: VertexOutput;
 
     out.clip_position = view.view_proj * mesh.model * vec4<f32>(vertex.position, 1.0);
@@ -39,8 +31,6 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.ends = vertex.ends;
     out.uv = vertex.uv;
     out.control = vertex.control;
-
-
 
     return out;
 }
@@ -63,7 +53,6 @@ fn toLinear(sRGB: float4) -> float4
 
     return mix(higher, lower, cutoff);
 }
-
 
 struct FragmentInput {
     @location(0) ends: vec4<f32>,
@@ -88,7 +77,6 @@ fn sdSegment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
   return length(pa - ba * h);
 }
 
-
 fn sdLine(uv: vec2<f32>, p0: vec2<f32>, p1: vec2<f32>) -> f32 {
   let m =  (p1.y - p0.y) / (p1.x - p0.x);
   let b = p0.y - m * p0.x;
@@ -103,7 +91,6 @@ fn sdCircle(p: vec2<f32>, c: vec2<f32>, r: f32) -> f32 {
   let d = length(p - c);
   return d - r;
 }
-
 
 fn sdRoundedBox(p: vec2<f32>, b: vec2<f32>, r: vec4<f32>) -> f32 {
   var x = r.x;
@@ -120,7 +107,6 @@ fn sdRoundedBox(p: vec2<f32>, b: vec2<f32>, r: vec4<f32>) -> f32 {
 //   return length(max(d, vec2<f32>(0.))) + min(max(d.x, d.y), 0.);
 // }
 
-
 struct SegmentUniform {
     color: float4,
     mech: f32,
@@ -133,7 +119,6 @@ struct SegmentUniform {
 
 @group(1) @binding(0)
 var<uniform> uni: SegmentUniform;
-
 
 @fragment
 fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
@@ -171,9 +156,6 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     let s = smoothstep(solid, solid + w, d);
     out_col = out_col * (1.0 - s);
 
-
-    
-
       // mechanical look
     if (uni.mech > 0.5) {
         let c0 = sdCircle(in.uv, y0, w);
@@ -187,8 +169,6 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
         
         out_col.a = out_col.a * (1.0 -s )   * ( sc1) * sc0;
     }
-
-
 
     // mask with the canvas
     let r = 0.02 * uni.inner_canvas_size_in_pixels.x;
@@ -205,5 +185,4 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     return out_col;
 
     // return float4(1.0,0.0,0.0,1.0);
-
 }

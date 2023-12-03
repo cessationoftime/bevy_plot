@@ -273,8 +273,8 @@ impl FromWorld for SegmentMesh2dPipeline {
 
         Self {
             view_layout: mesh2d_pipeline.view_layout,
-            mesh_layout: mesh2d_pipeline.mesh_layout,
             custom_uniform_layout,
+            mesh_layout: mesh2d_pipeline.mesh_layout,
             dummy_white_gpu_image: mesh2d_pipeline.dummy_white_gpu_image,
             // shader_handle,
         }
@@ -357,9 +357,10 @@ impl SpecializedMeshPipeline for SegmentMesh2dPipeline {
             layout: vec![
                 // Bind group 0 is the view uniform
                 self.view_layout.clone(),
-                // Bind group 1 is the mesh uniform
-                self.mesh_layout.clone(),
+                // Bind group 1 is the custom uniform
                 self.custom_uniform_layout.clone(),
+                // Bind group 2 is the mesh uniform
+                self.mesh_layout.clone(),
                 // texture
                 // self.material_layout.clone(),
             ],
@@ -390,9 +391,10 @@ type DrawSegmentMesh2d = (
     SetItemPipeline,
     // Set the view uniform as bind group 0
     SetMesh2dViewBindGroup<0>,
-    // Set the mesh uniform as bind group 1
-    SetMesh2dBindGroup<1>,
-    SetSegmentUniformBindGroup<3>,
+    // Set the custom uniform as bind group 1
+    SetSegmentUniformBindGroup<1>,
+    // Set the mesh uniform as bind group 2
+    SetMesh2dBindGroup<2>,
     // Draw the mesh
     DrawMesh2d,
 );

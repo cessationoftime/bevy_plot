@@ -681,8 +681,8 @@ impl Plugin for BezierMesh2dPlugin {
             .add_systems(
                 Render,
                 queue_customuniform_bind_group.in_set(RenderSet::Queue),
-            );
-        // .add_systems(Render, queue_colored_mesh2d.in_set(RenderSet::Queue));
+            )
+            .add_systems(Render, queue_colored_mesh2d.in_set(RenderSet::Queue));
     }
 
     fn finish(&self, app: &mut App) {

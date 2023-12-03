@@ -79,10 +79,10 @@ impl Plugin for PlotPlugin {
             .insert_resource(Cursor::default())
             .insert_resource(TickLabelFont { maybe_font: None })
             //comment out this extraction system when done debugging
-            .add_systems(
-                ExtractSchedule,
-                log_marker_uniform_extraction.in_set(RenderSet::ExtractCommands),
-            )
+            // .add_systems(
+            // ExtractSchedule,
+            // log_marker_uniform_extraction.in_set(RenderSet::ExtractCommands),
+            // )
             .add_systems(
                 Update,
                 (adjust_graph_axes, change_plot).in_set(PlotSytems::Model),
@@ -111,8 +111,8 @@ impl Plugin for PlotPlugin {
                 )
                     .in_set(PlotSytems::Other),
             )
-            .add_systems(Update, (segments_setup).in_set(PlotSytems::Segment));
-        // .add_systems(Update, (markers_setup).in_set(PlotSytems::Marker));
+            .add_systems(Update, (segments_setup).in_set(PlotSytems::Segment))
+            .add_systems(Update, (markers_setup).in_set(PlotSytems::Marker));
     }
 }
 

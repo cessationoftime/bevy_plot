@@ -1,10 +1,5 @@
 #import bevy_sprite::mesh2d_view_bindings view
-//@group(0) @binding(0)
-//var<uniform> view: View;
-
 #import bevy_sprite::mesh2d_types mesh
-//@group(1) @binding(0)
-//var<uniform> mesh: Mesh2d;
 
 alias float4 = vec4<f32>;
 alias float2 = vec2<f32>;
@@ -20,7 +15,6 @@ struct BezierCurveUniform {
     style: i32,
 };
 
-
 @group(1) @binding(0)
 var<uniform> bez_uni: BezierCurveUniform;
 
@@ -31,12 +25,14 @@ struct Vertex {
     @location(2) uv: vec2<f32>,
     @location(3) control: vec4<f32>,
 };
+
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) ends: vec4<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) control: vec4<f32>,
 };
+
 /// Entry point for the vertex shader
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -68,16 +64,11 @@ fn toLinear(sRGB: float4) -> float4
     return mix(higher, lower, cutoff);
 }
 
-
 struct FragmentInput {
     @location(0) ends: vec4<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) control: vec4<f32>,
 };
-
-
-
-
 
 fn sdBezier(p: vec2<f32>, A: vec2<f32>, B: vec2<f32>, C: vec2<f32>) -> vec2<f32> {
   let a = B - A;
@@ -121,6 +112,7 @@ fn sdBezier(p: vec2<f32>, A: vec2<f32>, B: vec2<f32>, C: vec2<f32>) -> vec2<f32>
 }
 
 fn dot2( v: float2 ) -> f32 { return dot(v,v); }
+
 fn cro(  a: float2, b: float2 ) -> f32 { return a.x*b.y - a.y*b.x; }
 
 fn sdBezier2( p: float2,  v0q: float2,  v1q: float2,  v2q: float2 ) -> float2

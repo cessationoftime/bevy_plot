@@ -34,8 +34,6 @@ var<private>  out_of_bounds: f32 = 100000.0;
 var<private>  bluish : float4 = float4 (0.13, 0.28, 0.86, 1.0);
 var<private>  num_segments: i32 = 256;
 
-
-
 struct Globals {
     time: f32,
     zoom: f32,
@@ -162,7 +160,6 @@ fn draw_segment(thickness: f32, rect: vec4<f32>, uv: vec2<f32>, segment: Segment
     return rect2;
 }
 
-
 fn sdCircle(pos: vec2<f32>, r: f32) -> f32 {
     return length(pos)-r;
 }
@@ -191,8 +188,8 @@ fn draw_circle(
     let rect2 = mix(rect, pcolor, 1.0 -cerc_start);
     return rect2;
 }
-//////////////////////// sdfs //////////////////////////////////////
 
+//////////////////////// sdfs //////////////////////////////////////
 
 @fragment
 fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
