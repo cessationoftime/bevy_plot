@@ -1,30 +1,30 @@
-type float4 = vec4<f32>;
-type float2 = vec2<f32>;
+//import default vertex shader output from https://github.com/bevyengine/bevy/blob/v0.11.0/crates/bevy_sprite/src/mesh2d/mesh2d_vertex_output.wgsl
+#import bevy_sprite::mesh2d_vertex_output  MeshVertexOutput
 
-struct VertexOutput {
-    [[builtin(position)]] clip_position: vec4<f32>;
-    [[location(0)]] uv: vec2<f32>;
-};
+@group(0) @binding(0) var<uniform> mate: GraphEditShader;
+
+alias float4 = vec4<f32>;
+alias float2 = vec2<f32>;
 
 struct Segment {
-    start: float2;
-    end: float2;
+    start: float2,
+    end: float2,
 };
 
 struct Interval {
-    start: vec2<f32>;
-    end: vec2<f32>;
-    control: float4;
+    start: vec2<f32>,
+    end: vec2<f32>,
+    control: float4,
 };
 
 struct GraphSize {
-    size: float2;
-    outer_border: float2;
+    size: float2,
+    outer_border: float2,
 };
 
 struct Bound {
-    up: float2;
-    lo: float2;
+    up: float2,
+    lo: float2,
 };
 
 var<private>  solid: f32 = 0.001;  
@@ -37,35 +37,31 @@ var<private>  num_segments: i32 = 256;
 
 
 struct Globals {
-    time: f32;
-    zoom: f32;
-    dum1: f32;
-    dum2: f32;
+    time: f32,
+    zoom: f32,
+    dum1: f32,
+    dum2: f32,
 };
 
 struct GraphEditShader {
-    
-    mouse_pos: vec2<f32>;
-    tick_period: vec2<f32>;
-    bounds: Bound;
-    time: f32;
-    zoom: f32;
-    size: float2;
-    outer_border: float2;
-    position: vec2<f32>;
-    show_target: f32;
-    hide_contour: f32;
-    target_pos: float2;
-    background_color1: float4;
-    background_color2: float4;
-    target_color: float4;
-    show_grid: f32;
-    show_axes: f32;
+    mouse_pos: vec2<f32>,
+    tick_period: vec2<f32>,
+    bounds: Bound,
+    time: f32,
+    zoom: f32,
+    size: float2,
+    outer_border: float2,
+    position: vec2<f32>,
+    show_target: f32,
+    hide_contour: f32,
+    target_pos: float2,
+    background_color1: float4,
+    background_color2: float4,
+    target_color: float4,
+    show_grid: f32,
+    show_axes: f32,
     
 };
-
-[[group(1), binding(0)]]
-var<uniform> mate: GraphEditShader;
 
 fn from_pix_to_local(uv_orig: float2) -> float2 {
 
@@ -152,7 +148,7 @@ fn sdSegment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
 // fn draw_segment(thickness: f32, rect: vec4<f32>, uv: vec2<f32>, segment: Segment, color: float4, alpha: f32 ) -> vec4<f32> {
 //     let t = thickness; 
 //     let d = sdSegment(uv, segment.start, segment.end);
-//     let seg_start = smoothStep(t, t + 1.0/100.0,   d);
+//     let seg_start = smoothstep(t, t + 1.0/100.0,   d);
 //     let rect2 = mix(rect,  color,   alpha*abs( 1.0 -seg_start));
 //     return rect2;
 // }
@@ -161,7 +157,7 @@ fn draw_segment(thickness: f32, rect: vec4<f32>, uv: vec2<f32>, segment: Segment
     // let uv = from_local_to_pixels(uv_orig);
     let t = thickness; // * mate.globals.zoom;
     let d = sdSegment(uv, segment.start, segment.end);
-    let seg_start = smoothStep(t, t + t * 2.0,   d);
+    let seg_start = smoothstep(t, t + t * 2.0,   d);
     let rect2 = mix(rect,  color,   alpha*abs( 1.0 -seg_start));
     return rect2;
 }
@@ -191,18 +187,15 @@ fn draw_circle(
     if (annular) {
         sd_start = abs(sd_start);
     }
-    let cerc_start = smoothStep(t, t + s * 2., sd_start);
+    let cerc_start = smoothstep(t, t + s * 2., sd_start);
     let rect2 = mix(rect, pcolor, 1.0 -cerc_start);
     return rect2;
 }
 //////////////////////// sdfs //////////////////////////////////////
 
 
-
-
-
-[[stage(fragment)]]
-fn fragment(in: VertexOutput) -> [[location(0)]] vec4<f32> {
+@fragment
+fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
 
     // ///////////////////// coordinates /////////////////////////////////
     let x_max = mate.bounds.up.x;
@@ -337,16 +330,16 @@ fn fragment(in: VertexOutput) -> [[location(0)]] vec4<f32> {
         let so = mate.size / (1.0 + mate.outer_border );
         let ax_thick = 0.8 ;
 
-        let r = 0.02 * so.x;
-        let d = sdRoundedBox(in.uv - mate.position,  so / 2.0, float4(r,r,r,r));
-        let s = smoothStep(0.0, 2.0, d );
+        let a = 0.02 * so.x;
+        let b = sdRoundedBox(in.uv - mate.position,  so / 2.0, float4(a,a,a,a));
+        let c = smoothstep(0.0, 2.0, b );
 
         let colBackground3 = float4(colBackground2.xyz, 0.0);
-        rect = mix(rect, colBackground3, s);
+        rect = mix(rect, colBackground3, c);
 
         let r = 0.02 * so.x;
         let d = sdRoundedBox(in.uv - mate.position,  so / 2.0, float4(r,r,r,r));
-        let s = smoothStep(0.0, 2.0, abs(d) - 1.0 );
+        let s = smoothstep(0.0, 2.0, abs(d) - 1.0 );
 
         rect = mix(rect, float4(0.0, 0.0, 0.0, 1.0), 1.0 - s);
     }

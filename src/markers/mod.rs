@@ -2,6 +2,7 @@ use bevy::{
     core_pipeline::core_2d::Transparent2d,
     ecs::system::lifetimeless::{Read, SQuery, SRes},
     ecs::system::SystemParamItem,
+    log::*,
     prelude::*,
     reflect::TypeUuid,
     render::{
@@ -42,8 +43,9 @@ pub(crate) fn markers_setup(
     mut plots: ResMut<Assets<Plot>>,
     query: Query<(Entity, &Handle<Plot>), With<MarkerUniform>>,
 ) {
+    info!("entering markers_setup function");
+
     for event in change_canvas_material_event.iter() {
-        //
         for (entity, plot_handle) in query.iter() {
             if event.plot_handle == *plot_handle {
                 commands.entity(entity).despawn();
@@ -60,6 +62,7 @@ pub(crate) fn markers_setup(
             &event.plot_handle,
         )
     }
+    info!("markers_setup function completed")
 }
 
 fn plot_points(
@@ -78,7 +81,23 @@ fn plot_points(
 
         let quad_size = 30.0;
 
-        commands
+        let marker_uniform = MarkerUniform {
+            marker_size: marker_plot.size,
+            hole_size: 1.0,
+            zoom: 1.0,
+            marker_type: marker_plot.marker_style.to_int32(),
+            marker_point_color: col_to_vec4(marker_plot.marker_point_color),
+            color: col_to_vec4(marker_plot.color),
+            quad_size,
+            inner_canvas_size_in_pixels: plot.canvas_size / (1.0 + plot.outer_border),
+            // outer_border: plot.outer_border,
+            canvas_position: plot.canvas_position,
+            contour: if marker_plot.draw_contour { 1.0 } else { 0.0 },
+        };
+
+        info!("Creating MarkerUniform: {:?}", marker_uniform);
+
+        let my_entity = commands
             .spawn((
                 Mesh2dHandle(meshes.add(Mesh::from(shape::Quad {
                     size: Vec2::splat(quad_size),
@@ -104,19 +123,13 @@ fn plot_points(
                 // NoFrustumCulling,
             ))
             .insert(plot_handle.clone())
-            .insert(MarkerUniform {
-                marker_size: marker_plot.size,
-                hole_size: 1.0,
-                zoom: 1.0,
-                marker_type: marker_plot.marker_style.to_int32(),
-                marker_point_color: col_to_vec4(marker_plot.marker_point_color),
-                color: col_to_vec4(marker_plot.color),
-                quad_size,
-                inner_canvas_size_in_pixels: plot.canvas_size / (1.0 + plot.outer_border),
-                // outer_border: plot.outer_border,
-                canvas_position: plot.canvas_position,
-                contour: if marker_plot.draw_contour { 1.0 } else { 0.0 },
-            });
+            .insert(marker_uniform)
+            .id();
+
+        info!(
+            "Attached MarkerUniform to entity: {:?} with Handle<Plot>: {:?}",
+            my_entity, plot_handle
+        );
     }
 }
 
@@ -136,7 +149,7 @@ impl ExtractComponent for MarkerInstanceMatData {
 pub(crate) struct MarkerMesh2d;
 
 /// Uniform sent to markers.wgsl
-#[derive(Component, Clone, ShaderType)]
+#[derive(Component, Clone, ShaderType, Debug)]
 pub(crate) struct MarkerUniform {
     pub marker_size: f32,
     /// When the ```marker_point_color``` field is different from the ```color``` field,
@@ -228,7 +241,18 @@ impl SpecializedMeshPipeline for MarkerMesh2dPipeline {
         key: Self::Key,
         layout: &MeshVertexBufferLayout,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        let mut descriptor = self.mesh2d_pipeline.specialize(key.mesh, layout)?;
+        info!("Starting pipeline specialization with key: {:?}", key);
+
+        let mut descriptor = match self.mesh2d_pipeline.specialize(key.mesh, layout) {
+            Ok(descriptor) => {
+                info!("Base pipeline descriptor created successfully.");
+                descriptor
+            }
+            Err(e) => {
+                error!("Error creating base pipeline descriptor: {:?}", e);
+                return Err(e);
+            }
+        };
 
         descriptor.vertex.shader = key.shader_handle.clone();
         descriptor.vertex.buffers.push(VertexBufferLayout {
@@ -255,9 +279,11 @@ impl SpecializedMeshPipeline for MarkerMesh2dPipeline {
         descriptor.fragment.as_mut().unwrap().shader = key.shader_handle.clone();
         descriptor.layout = vec![
             self.mesh2d_pipeline.view_layout.clone(),
-            self.mesh2d_pipeline.mesh_layout.clone(),
             self.custom_uniform_layout.clone(),
+            self.mesh2d_pipeline.mesh_layout.clone(),
         ];
+
+        info!("Pipeline specialization completed successfully.");
 
         Ok(descriptor)
     }
@@ -269,10 +295,10 @@ type DrawMarkerMesh2d = (
     SetItemPipeline,
     // Set the view uniform as bind group 0
     SetMesh2dViewBindGroup<0>,
-    // Set the mesh uniform as bind group 1
-    SetMesh2dBindGroup<1>,
-    // Set the marker uniform as bind group 2
-    SetMarkerUniformBindGroup<2>,
+    // Set the marker uniform as bind group 1
+    SetMarkerUniformBindGroup<1>,
+    // Set the mesh uniform as bind group 2
+    SetMesh2dBindGroup<2>,
     // Draw the mesh
     DrawMarkerMeshInstanced,
 );
@@ -287,6 +313,9 @@ pub const MARKER_SHADER_HANDLE: HandleUntyped =
 
 impl Plugin for MarkerMesh2dPlugin {
     fn build(&self, app: &mut App) {
+        // load_internal_asset!(app, MARKER_SHADER_HANDLE, "markers.wgsl", Shader::from_wgsl);
+
+        info!("Starting MarkerMesh2dPlugin setup");
         let mut shaders = app.world.get_resource_mut::<Assets<Shader>>().unwrap();
 
         let handle_untyped = MARKER_SHADER_HANDLE.clone();
@@ -298,33 +327,37 @@ impl Plugin for MarkerMesh2dPlugin {
 
         let shader_typed_handle = shaders.get_handle(handle_untyped);
 
-        app.add_plugins(UniformComponentPlugin::<MarkerUniform>::default());
-        app.add_plugins(ExtractComponentPlugin::<MarkerInstanceMatData>::default());
-
-        // Register our custom draw function and pipeline, and add our render systems
-        let render_app = app.get_sub_app_mut(RenderApp).unwrap();
-
-        render_app
-            .add_render_command::<Transparent2d, DrawMarkerMesh2d>()
-            .insert_resource(MarkerShaderHandle(shader_typed_handle))
-            .add_systems(Render, prepare_instance_buffers.in_set(RenderSet::Prepare))
-            .add_systems(
-                Render,
-                extract_colored_mesh2d.in_set(RenderSet::ExtractCommands),
-            )
-            .add_systems(
-                Render,
-                queue_marker_uniform_bind_group.in_set(RenderSet::Queue),
-            )
-            .add_systems(Render, queue_colored_mesh2d.in_set(RenderSet::Queue));
+        //example for UniformComponent plugin is here:
+        //https://github.com/bevyengine/bevy/blob/v0.11.3/examples/shader/post_processing.rs
+        app.add_plugins((
+            ExtractComponentPlugin::<MarkerInstanceMatData>::default(),
+            UniformComponentPlugin::<MarkerUniform>::default(),
+        ))
+        .sub_app_mut(RenderApp)
+        // Use the RenderApp sub-app to register our custom draw function and pipeline, and add our render systems
+        .add_render_command::<Transparent2d, DrawMarkerMesh2d>()
+        .insert_resource(MarkerShaderHandle(shader_typed_handle))
+        .add_systems(Render, prepare_instance_buffers.in_set(RenderSet::Prepare))
+        .add_systems(
+            Render,
+            extract_colored_mesh2d.in_set(RenderSet::ExtractCommands),
+        )
+        .add_systems(
+            Render,
+            prepare_marker_uniform_bind_group.in_set(RenderSet::Queue),
+        ) // in 0.12 we will need to change the above from RenderSet::Queue to RenderSet::PrepareBindGroups as per the changes made here: https://github.com/bevyengine/bevy/pull/9236        )
+        .add_systems(Render, queue_colored_mesh2d.in_set(RenderSet::Queue));
+        info!("MarkerMesh2dPlugin setup complete");
     }
 
     fn finish(&self, app: &mut App) {
+        info!("Finalizing MarkerMesh2dPlugin");
         if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .init_resource::<MarkerMesh2dPipeline>()
                 .init_resource::<SpecializedMeshPipelines<MarkerMesh2dPipeline>>();
         }
+        info!("MarkerMesh2dPlugin finalization complete");
     }
 }
 
@@ -340,7 +373,11 @@ fn extract_colored_mesh2d(
             continue;
         }
         values.push((entity, (custom_uni.clone(), MarkerMesh2d)));
+
+        info!("Extracting MarkerUniform from entity: {:?}", entity);
+        info!("MarkerUniform data: {:?}", custom_uni);
     }
+
     *previous_len = values.len();
     commands.insert_or_spawn_batch(values);
 }
@@ -368,23 +405,28 @@ struct MarkerUniformBindGroup {
     pub value: BindGroup,
 }
 
-fn queue_marker_uniform_bind_group(
+fn prepare_marker_uniform_bind_group(
     mut commands: Commands,
     mesh2d_pipeline: Res<MarkerMesh2dPipeline>,
     render_device: Res<RenderDevice>,
     mesh2d_uniforms: Res<ComponentUniforms<MarkerUniform>>,
 ) {
+    info!("Entering queue_marker_uniform_bind_group, about to create MarkerUniformBindGroup");
     if let Some(binding) = mesh2d_uniforms.uniforms().binding() {
-        commands.insert_resource(MarkerUniformBindGroup {
-            value: render_device.create_bind_group(&BindGroupDescriptor {
-                entries: &[BindGroupEntry {
-                    binding: 0,
-                    resource: binding,
-                }],
-                label: Some("MarkersUniform_bind_group"),
-                layout: &mesh2d_pipeline.custom_uniform_layout,
-            }),
+        let bind_group = render_device.create_bind_group(&BindGroupDescriptor {
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: binding,
+            }],
+            label: Some("MarkersUniform_bind_group"),
+            layout: &mesh2d_pipeline.custom_uniform_layout,
         });
+
+        info!("MarkerUniformBindGroup created successfully.");
+
+        commands.insert_resource(MarkerUniformBindGroup { value: bind_group });
+    } else {
+        error!("MarkerUniformBindGroup resource creation failed: Binding not available.");
     }
 }
 
@@ -441,6 +483,8 @@ fn queue_colored_mesh2d(
                             batch_range: None,
                         });
                     }
+                } else {
+                    error!("error in queue_colored_mesh_2d, unable to get render_meshes");
                 }
             }
         }
@@ -502,8 +546,10 @@ impl RenderCommand<Transparent2d> for DrawMarkerMeshInstanced {
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let mesh_handle = &mesh_query.get_single().unwrap().0; //.get().unwrap().0;
-
         let instance_buffer = instance_buffer_query.get_inner(entity).unwrap();
+
+        info!("Mesh Handle: {:?}", mesh_handle);
+        info!("Instance Buffer Length: {}", instance_buffer.length);
 
         let gpu_mesh = match meshes.into_inner().get(mesh_handle) {
             Some(gpu_mesh) => gpu_mesh,
@@ -520,12 +566,16 @@ impl RenderCommand<Transparent2d> for DrawMarkerMeshInstanced {
                 count,
             } => {
                 pass.set_index_buffer(buffer.slice(..), 0, *index_format);
+                info!("About to execute draw_indexed command");
                 pass.draw_indexed(0..*count, 0, 0..instance_buffer.length as u32);
             }
             GpuBufferInfo::NonIndexed => {
+                info!("About to execute draw command");
                 pass.draw(0..gpu_mesh.vertex_count, 0..instance_buffer.length as u32);
             }
         }
+
+        info!("Draw command executed successfully");
 
         RenderCommandResult::Success
     }

@@ -1,43 +1,44 @@
-#import bevy_sprite::mesh2d_view_bindings
-[[group(0), binding(0)]]
-var<uniform> view: View;
+#import bevy_sprite::mesh2d_view_bindings view
+//@group(0) @binding(0)
+//var<uniform> view: View;
 
-#import bevy_sprite::mesh2d_types
-[[group(1), binding(0)]]
-var<uniform> mesh: Mesh2d;
+#import bevy_sprite::mesh2d_types mesh
+//@group(1) @binding(0)
+//var<uniform> mesh: Mesh2d;
 
-type float4 = vec4<f32>;
-type float2 = vec2<f32>;
+alias float4 = vec4<f32>;
+alias float2 = vec2<f32>;
 
 struct BezierCurveUniform {
-    mech: f32;
-    zoom: f32;
-    inner_canvas_size_in_pixels: float2;
-    canvas_position_in_pixels: float2;
-    color: float4;
-    size: f32;
-    dummy: f32;
-    style: i32;
+    mech: f32,
+    zoom: f32,
+    inner_canvas_size_in_pixels: float2,
+    canvas_position_in_pixels: float2,
+    color: float4,
+    size: f32,
+    dummy: f32,
+    style: i32,
 };
 
-[[group(2), binding(0)]]
+
+@group(1) @binding(0)
 var<uniform> bez_uni: BezierCurveUniform;
 
 // The structure of the vertex buffer is as specified in `specialize()`
 struct Vertex {
-    [[location(0)]] position: vec3<f32>;
-    [[location(1)]] ends: vec4<f32>;
-    [[location(2)]] uv: vec2<f32>;
-    [[location(3)]] control: vec4<f32>;
+    @location(0) position: vec3<f32>,
+    @location(1) ends: vec4<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) control: vec4<f32>,
 };
 struct VertexOutput {
-    [[builtin(position)]] clip_position: vec4<f32>;
-    [[location(0)]] ends: vec4<f32>;
-    [[location(1)]] uv: vec2<f32>;
-    [[location(2)]] control: vec4<f32>;
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) ends: vec4<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) control: vec4<f32>,
 };
 /// Entry point for the vertex shader
-[[stage(vertex)]]
+@vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
     // Project the world position of the mesh into screen position
@@ -69,9 +70,9 @@ fn toLinear(sRGB: float4) -> float4
 
 
 struct FragmentInput {
-    [[location(0)]] ends: vec4<f32>;
-    [[location(1)]] uv: vec2<f32>;
-    [[location(2)]] control: vec4<f32>;
+    @location(0) ends: vec4<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) control: vec4<f32>,
 };
 
 
@@ -185,14 +186,14 @@ fn tips(uv: float2, m_in: float4, dy: float2, solid: f32, w: f32 ) -> float4 {
     let uvrot = ma * uv ;
     let angle = 3.1415 / 2.0;
     let pies = sdPie(uvrot , vec2<f32>(sin(angle), cos(angle)) , solid / 0.9);
-    let sp = smoothStep(0.0 , w  , pies);
+    let sp = smoothstep(0.0 , w  , pies);
     // let mp = mix(m, vec4<f32>(0.0, 1.0, 0.0, 1.0),   1.0-sp);
     m.a = m.a * (sp);
     return m;
 }
 
-[[stage(fragment)]]
-fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
+@fragment
+fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     let width = bez_uni.size / 1.0;
     // let w = 1.0 + width * bez_uni.zoom  * 1.0;
     // let solid = width * bez_uni.zoom ;
@@ -222,19 +223,19 @@ fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
     
 
     let d = sdBezier(uv, p0, control  , p1);
-    let s = smoothStep(0.0 + solid, w  + solid , d.x);
+    let s = smoothstep(0.0 + solid, w  + solid , d.x);
 
     // mechanical look
     if (bez_uni.mech > 0.5) {
     // if (false) {
         let c0 = sdCircle(in.uv, p0, w);
-        let sc0 = smoothStep(0.0 + solid, w + solid , c0);
+        let sc0 = smoothstep(0.0 + solid, w + solid , c0);
 
         let solid_c = solid / 3.0;
         let w_c = w / 2.0;
 
         let c1 = sdCircle(in.uv, p1, 0.2 );
-        let sc1 = smoothStep(0.0 + solid_c , (w_c + solid_c)  , abs(c1));
+        let sc1 = smoothstep(0.0 + solid_c , (w_c + solid_c)  , abs(c1));
         
         out_col.a = out_col.a * (1.0 -s )   * ( sc1) * sc0;
 
@@ -258,11 +259,11 @@ fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
             let dc = sdCircle(in.uv, p1 + dy *  width * 2.12 * artifact , w);
             // let dc = sdCircle(in.uv, p1 + dy *  width * bez_uni.dummy * 2.12 * artifact , w);
 
-           let sc = smoothStep(solid, w * 0.9 *0.5 + solid , dc);
+           let sc = smoothstep(solid, w * 0.9 *0.5 + solid , dc);
            
             // let dy = normalize(p1 - control);
             // let dc = sdCircle(in.uv, p1 + dy * 4.0 , 0.0);
-            // let sc = smoothStep(solid, solid + w * 1.0 , dc);
+            // let sc = smoothstep(solid, solid + w * 1.0 , dc);
 
 
             out_col.a = out_col.a  - ( 1.0 - sc ) ;
@@ -279,11 +280,11 @@ fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
     }
 
     // let dc = sdCircle(in.uv, p1 + float2(0.0, 6.0)  , 1.2);
-    // let sc = smoothStep(solid, solid + w  , dc);
+    // let sc = smoothstep(solid, solid + w  , dc);
     // out_col = mix(out_col, vec4<f32>(0.5, 0.0, 0.0, 1.0), 1.0 -  sc);
 
     // let dc = sdCircle(in.uv, control.xy  , 1.2);
-    // let sc = smoothStep(solid, solid + w  , dc);
+    // let sc = smoothstep(solid, solid + w  , dc);
     // out_col = mix(out_col, vec4<f32>(0.5, 0.0, 0.5, 1.0), 1.0 -  sc);
 
 
@@ -295,7 +296,7 @@ fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
         bez_uni.inner_canvas_size_in_pixels / 2.0 - 1.0, float4(r,r,r,r)
     );
 
-    let s = smoothStep(-2.0, 0.0, d );
+    let s = smoothstep(-2.0, 0.0, d );
     out_col = mix(out_col, float4(0.0,0.3,0.3,0.0) ,  s) ;
 
     // out_col =  float4(0.0,0.3,0.3,1.0);

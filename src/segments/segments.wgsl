@@ -1,35 +1,35 @@
 // Import the standard 2d mesh uniforms and set their bind groups
-#import bevy_sprite::mesh2d_view_bindings
-[[group(0), binding(0)]]
-var<uniform> view: View;
+#import bevy_sprite::mesh2d_view_bindings view
+//@group(0) @binding(0)
+//var<uniform> view: View;
 
 
-#import bevy_sprite::mesh2d_types
+#import bevy_sprite::mesh2d_bindings mesh
 
-[[group(1), binding(0)]]
-var<uniform> mesh: Mesh2d;
+//@group(1) @binding(0)
+//var<uniform> mesh: Mesh2d;
 
-type float4 = vec4<f32>;
-type float2 = vec2<f32>;
+alias float4 = vec4<f32>;
+alias float2 = vec2<f32>;
 
 // The structure of the vertex buffer is as specified in `specialize()`
 struct Vertex {
-    [[location(0)]] position: vec3<f32>;
-    [[location(1)]] ends: vec4<f32>;
-    [[location(2)]] uv: vec2<f32>;
-    [[location(3)]] control: vec4<f32>;
+    @location(0) position: vec3<f32>,
+    @location(1) ends: vec4<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) control: vec4<f32>,
 };
 
 struct VertexOutput {
     // The vertex shader must set the on-screen position of the vertex
-    [[builtin(position)]] clip_position: vec4<f32>;
+    @builtin(position) clip_position: vec4<f32>,
     // We pass the vertex color to the framgent shader in location 0
-    [[location(0)]] ends: vec4<f32>;
-    [[location(1)]] uv: vec2<f32>;
-    [[location(2)]] control: vec4<f32>;
+    @location(0) ends: vec4<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) control: vec4<f32>,
 };
 
-[[stage(vertex)]]
+@vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
 
     var out: VertexOutput;
@@ -66,9 +66,9 @@ fn toLinear(sRGB: float4) -> float4
 
 
 struct FragmentInput {
-    [[location(0)]] ends: vec4<f32>;
-    [[location(1)]] uv: vec2<f32>;
-    [[location(2)]] control: vec4<f32>;
+    @location(0) ends: vec4<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) control: vec4<f32>,
 };
 
 fn cla(mi: f32, ma: f32, x: f32) -> f32 {
@@ -122,21 +122,21 @@ fn sdRoundedBox(p: vec2<f32>, b: vec2<f32>, r: vec4<f32>) -> f32 {
 
 
 struct SegmentUniform {
-  color: float4;
-    mech: f32;
-    segment_thickness: f32;
-    hole_size: f32;
-    zoom: f32;
-    inner_canvas_size_in_pixels: float2;
-    canvas_position_in_pixels: float2;    
+    color: float4,
+    mech: f32,
+    segment_thickness: f32,
+    hole_size: f32,
+    zoom: f32,
+    inner_canvas_size_in_pixels: float2,
+    canvas_position_in_pixels: float2,    
 };
 
-[[group(2), binding(0)]]
+@group(1) @binding(0)
 var<uniform> uni: SegmentUniform;
 
 
-[[stage(fragment)]]
-fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
+@fragment
+fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
   
     let width = 1.0 ;
 
@@ -168,7 +168,7 @@ fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
 
 
     let d = sdSegment(in.uv, y0, y1) ;
-    let s = smoothStep(solid, solid + w, d);
+    let s = smoothstep(solid, solid + w, d);
     out_col = out_col * (1.0 - s);
 
 
@@ -177,13 +177,13 @@ fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
       // mechanical look
     if (uni.mech > 0.5) {
         let c0 = sdCircle(in.uv, y0, w);
-        let sc0 = smoothStep(0.0 + solid, w + solid , c0);
+        let sc0 = smoothstep(0.0 + solid, w + solid , c0);
 
         let solid_c = solid / 3.0;
         let w_c = w / 2.0;
 
         let c1 = sdCircle(in.uv, y1, 0.2 );
-        let sc1 = smoothStep(0.0 + solid_c , (w_c + solid_c)  , abs(c1));
+        let sc1 = smoothstep(0.0 + solid_c , (w_c + solid_c)  , abs(c1));
         
         out_col.a = out_col.a * (1.0 -s )   * ( sc1) * sc0;
     }
@@ -198,7 +198,7 @@ fn fragment(in: FragmentInput) -> [[location(0)]] vec4<f32> {
         uni.inner_canvas_size_in_pixels / 2.0 - 1.0, float4(r,r,r,r)
     );
 
-    let s = smoothStep(-2.0, 0.0, d );
+    let s = smoothstep(-2.0, 0.0, d );
     out_col = mix(out_col, float4(out_col.x,out_col.y,out_col.z,0.0) ,  s) ;
 
 

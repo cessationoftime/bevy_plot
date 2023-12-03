@@ -443,7 +443,7 @@ type DrawSegmentMesh2d = (
     SetMesh2dViewBindGroup<0>,
     // Set the mesh uniform as bind group 1
     SetMesh2dBindGroup<1>,
-    SetSegmentUniformBindGroup<2>,
+    SetSegmentUniformBindGroup<3>,
     // Draw the mesh
     DrawMesh2d,
 );

@@ -495,8 +495,8 @@ impl FromWorld for BezierMesh2dPipeline {
         Self {
             // view_layout: mesh2d_pipeline.view_layout,
             // mesh_layout: mesh2d_pipeline.mesh_layout,
-            mesh2d_pipeline,
             custom_uniform_layout,
+            mesh2d_pipeline,
             // dummy_white_gpu_image: mesh2d_pipeline.dummy_white_gpu_image,
             // shader_handle: bezier_handle.0.clone(),
         }
@@ -563,10 +563,10 @@ impl SpecializedRenderPipeline for BezierMesh2dPipeline {
             layout: vec![
                 // Bind group 0 is the view uniform
                 self.mesh2d_pipeline.view_layout.clone(),
-                // Bind group 1 is the mesh uniform
-                self.mesh2d_pipeline.mesh_layout.clone(),
-                //
+                // Bind group 1 is the custom uniform
                 self.custom_uniform_layout.clone(),
+                // Bind group 2 is the mesh uniform
+                self.mesh2d_pipeline.mesh_layout.clone(),
             ],
             primitive: PrimitiveState {
                 front_face: FrontFace::Ccw,
@@ -600,9 +600,10 @@ impl SpecializedRenderPipeline for BezierMesh2dPipeline {
         // descriptor.layout = Some(vec![
         //     // Bind group 0 is the view uniform
         //     self.mesh2d_pipeline.view_layout.clone(),
-        //     // Bind group 1 is the mesh uniform
-        //     self.mesh2d_pipeline.mesh_layout.clone(),
+        // Bind group 1 is the custom uniform
         //     self.custom_uniform_layout.clone(),
+        //     // Bind group 2 is the mesh uniform
+        //     self.mesh2d_pipeline.mesh_layout.clone(),
         // ]);
         // descriptor.label = Some("bezier_mesh2d_pipeline".into());
         // // descriptor.fragment.as_mut().unwrap().targets = vec![ColorTargetState {
@@ -636,9 +637,10 @@ type DrawBezierMesh2d = (
     SetItemPipeline,
     // Set the view uniform as bind group 0
     SetMesh2dViewBindGroup<0>,
-    // Set the mesh uniform as bind group 1
-    SetMesh2dBindGroup<1>,
-    SetBezierCurveUniformBindGroup<2>,
+    // Set the custom uniform as bind group 1
+    SetBezierCurveUniformBindGroup<1>,
+    // Set the mesh uniform as bind group 2
+    SetMesh2dBindGroup<2>,
     // Draw the mesh
     DrawMesh2d,
 );
@@ -679,8 +681,8 @@ impl Plugin for BezierMesh2dPlugin {
             .add_systems(
                 Render,
                 queue_customuniform_bind_group.in_set(RenderSet::Queue),
-            )
-            .add_systems(Render, queue_colored_mesh2d.in_set(RenderSet::Queue));
+            );
+        // .add_systems(Render, queue_colored_mesh2d.in_set(RenderSet::Queue));
     }
 
     fn finish(&self, app: &mut App) {

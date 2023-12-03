@@ -1,6 +1,7 @@
 use bevy::reflect::TypePath;
 use bevy::{
-    prelude::*, reflect::TypeUuid, render::render_resource::ShaderType, sprite::Material2dPlugin,
+    prelude::*, reflect::TypeUuid, render::render_resource::ShaderType, render::Render,
+    render::RenderSet, sprite::Material2dPlugin,
 };
 
 use super::colors::make_color_palette;
@@ -77,6 +78,11 @@ impl Plugin for PlotPlugin {
             .insert_resource(make_color_palette())
             .insert_resource(Cursor::default())
             .insert_resource(TickLabelFont { maybe_font: None })
+            //comment out this extraction system when done debugging
+            .add_systems(
+                ExtractSchedule,
+                log_marker_uniform_extraction.in_set(RenderSet::ExtractCommands),
+            )
             .add_systems(
                 Update,
                 (adjust_graph_axes, change_plot).in_set(PlotSytems::Model),
@@ -105,8 +111,17 @@ impl Plugin for PlotPlugin {
                 )
                     .in_set(PlotSytems::Other),
             )
-            .add_systems(Update, (segments_setup).in_set(PlotSytems::Segment))
-            .add_systems(Update, (markers_setup).in_set(PlotSytems::Marker));
+            .add_systems(Update, (segments_setup).in_set(PlotSytems::Segment));
+        // .add_systems(Update, (markers_setup).in_set(PlotSytems::Marker));
+    }
+}
+
+fn log_marker_uniform_extraction(query: Query<(Entity, &MarkerUniform), With<MarkerUniform>>) {
+    for (entity, marker_uniform) in query.iter() {
+        info!(
+            "MarkerUniform present for entity {:?}: {:?}",
+            entity, marker_uniform
+        );
     }
 }
 
